@@ -228,6 +228,14 @@ public class BlockValuesManagerImpl extends Manager implements BlockValuesManage
         return key == null ? original : key;
     }
 
+    /**
+     * Whether {@link #convertKey(Key, Location)} may return a different key for {@code key}, depending on the
+     * location. When it returns false, the location does not matter and {@code key} is returned as is.
+     */
+    public boolean hasCustomKeyParser(Key key) {
+        return customKeyParsers.get(key) != null;
+    }
+
     public Key convertKey(Key original, ItemStack itemStack) {
         CustomKeyParser customKeyParser = customKeyParsers.get(original);
 
