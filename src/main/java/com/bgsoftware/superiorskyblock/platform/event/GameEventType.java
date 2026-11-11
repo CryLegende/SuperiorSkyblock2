@@ -12,6 +12,7 @@ import static com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs.
 import static com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs.BlockBurnEvent;
 import static com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs.BlockDispenseEvent;
 import static com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs.BlockFadeEvent;
+import static com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs.BlockFertilizeEvent;
 import static com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs.BlockFormEvent;
 import static com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs.BlockFromToEvent;
 import static com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs.BlockGrowEvent;
@@ -84,6 +85,7 @@ public class GameEventType<Args extends IEventArgs> extends EventType<Args, Game
     public static final GameEventType<BlockBurnEvent> BLOCK_BURN_EVENT = register(BlockBurnEvent.class, GameEventFlags.BLOCK_EVENT);
     public static final GameEventType<BlockDispenseEvent> BLOCK_DISPENSE_EVENT = register(BlockDispenseEvent.class, GameEventFlags.BLOCK_EVENT);
     public static final GameEventType<BlockFadeEvent> BLOCK_FADE_EVENT = register(BlockFadeEvent.class, GameEventFlags.BLOCK_EVENT);
+    public static final GameEventType<BlockFertilizeEvent> BLOCK_FERTILIZE_EVENT = register(BlockFertilizeEvent.class, GameEventFlags.BLOCK_EVENT);
     public static final GameEventType<BlockFormEvent> BLOCK_FORM_EVENT = register(BlockFormEvent.class, GameEventFlags.BLOCK_EVENT);
     public static final GameEventType<BlockFromToEvent> BLOCK_FROM_TO_EVENT = register(BlockFromToEvent.class, GameEventFlags.BLOCK_EVENT);
     public static final GameEventType<BlockGrowEvent> BLOCK_GROW_EVENT = register(BlockGrowEvent.class, GameEventFlags.BLOCK_EVENT);

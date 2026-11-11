@@ -173,6 +173,12 @@ public class GameEventArgs implements IEventArgs {
 
     }
 
+    public static class BlockFertilizeEvent extends BlockEvent {
+
+        public List<BlockState> blocks;
+
+    }
+
     public static class PlayerJoinEvent extends PlayerEvent {
 
     }

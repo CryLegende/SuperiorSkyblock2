@@ -48,6 +48,7 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.Collection;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -104,6 +105,9 @@ public class BlockChangesListener extends AbstractGameEventListener {
 
     private final Collection<Location> alreadySpongeAbosrbCalled = AutoRemovalCollection.newArrayList(5L * 50, TimeUnit.MILLISECONDS);
     private final Collection<Location> alreadyChorusFlowerTracked = AutoRemovalCollection.newArrayList(1L * 50, TimeUnit.MILLISECONDS);
+    // Bone meal that grows a tree fires a structure grow event, then a fertilize event with the same list.
+    // Worlds can tick on their own threads, hence one reference per thread.
+    private final ThreadLocal<List<BlockState>> lastStructureGrowBlocks = new ThreadLocal<>();
 
     private final LazyReference<WorldRecordService> worldRecordService = new LazyReference<WorldRecordService>() {
         @Override
@@ -195,6 +199,8 @@ public class BlockChangesListener extends AbstractGameEventListener {
     }
 
     private void onStructureGrow(GameEvent<GameEventArgs.StructureGrowEvent> e) {
+        this.lastStructureGrowBlocks.set(e.getArgs().blocks);
+
         // We do not care about spawn island, and therefore only island worlds are relevant.
         if (!plugin.getGrid().isIslandsWorld(e.getArgs().location.getWorld()))
             return;
@@ -214,6 +220,44 @@ public class BlockChangesListener extends AbstractGameEventListener {
         Location growLocation = e.getArgs().location;
         this.worldRecordService.get().recordMultiBlocksPlace(placedBlockCounts, growLocation, WorldRecordFlags.DIRTY_CHUNKS);
         this.worldRecordService.get().recordMultiBlocksBreak(brokenBlockCounts, growLocation, WorldRecordFlags.DIRTY_CHUNKS);
+    }
+
+    private void onBlockFertilize(GameEvent<GameEventArgs.BlockFertilizeEvent> e) {
+        List<BlockState> blocks = e.getArgs().blocks;
+
+        // A tree grown by bone meal was already recorded by its structure grow event, which had this same list.
+        if (blocks == this.lastStructureGrowBlocks.get()) {
+            this.lastStructureGrowBlocks.remove();
+            return;
+        }
+
+        Block block = e.getArgs().block;
+
+        // We do not care about spawn island, and therefore only island worlds are relevant.
+        if (!plugin.getGrid().isIslandsWorld(block.getWorld()))
+            return;
+
+        // The blocks are placed after the event: the world still holds the replaced ones. Crops that only
+        // gain an age keep their type, and with it their count.
+        KeyMap<Integer> placedBlockCounts = KeyMaps.createArrayMap(KeyIndicator.MATERIAL);
+        KeyMap<Integer> brokenBlockCounts = KeyMaps.createArrayMap(KeyIndicator.MATERIAL);
+        blocks.forEach(blockState -> {
+            Block replacedBlock = blockState.getBlock();
+            if (blockState.getType() == replacedBlock.getType())
+                return;
+            Key placedBlockKey = Keys.of(blockState);
+            Key brokenBlockKey = Keys.of(replacedBlock);
+            if (!placedBlockKey.equals(ConstantKeys.AIR))
+                placedBlockCounts.put(placedBlockKey, placedBlockCounts.getOrDefault(placedBlockKey, 0) + 1);
+            if (!brokenBlockKey.equals(ConstantKeys.AIR))
+                brokenBlockCounts.put(brokenBlockKey, brokenBlockCounts.getOrDefault(brokenBlockKey, 0) + 1);
+        });
+
+        try (ObjectsPools.Wrapper<Location> wrapper = ObjectsPools.LOCATION.obtain()) {
+            Location location = block.getLocation(wrapper.getHandle());
+            this.worldRecordService.get().recordMultiBlocksPlace(placedBlockCounts, location, REGULAR_RECORD_FLAGS);
+            this.worldRecordService.get().recordMultiBlocksBreak(brokenBlockCounts, location, REGULAR_RECORD_FLAGS);
+        }
     }
 
     private void onBlockGrow(GameEvent<GameEventArgs.BlockGrowEvent> e) {
@@ -738,6 +782,7 @@ public class BlockChangesListener extends AbstractGameEventListener {
         registerCallback(GameEventType.BLOCK_PLACE_EVENT, GameEventPriority.MONITOR, this::onBlockPlace);
         registerCallback(GameEventType.PLAYER_EMPTY_BUCKET_EVENT, GameEventPriority.MONITOR, this::onBucketEmpty);
         registerCallback(GameEventType.STRUCTURE_GROW_EVENT, GameEventPriority.MONITOR, this::onStructureGrow);
+        registerCallback(GameEventType.BLOCK_FERTILIZE_EVENT, GameEventPriority.MONITOR, this::onBlockFertilize);
         registerCallback(GameEventType.BLOCK_GROW_EVENT, GameEventPriority.MONITOR, this::onBlockGrow);
         registerCallback(GameEventType.BLOCK_FORM_EVENT, GameEventPriority.MONITOR, this::onBlockForm);
         registerCallback(GameEventType.BLOCK_SPREAD_EVENT, GameEventPriority.MONITOR, this::onBlockSpread);

@@ -207,6 +207,12 @@ public class BukkitEventsListener implements Listener {
         }
 
         try {
+            Class.forName("org.bukkit.event.block.BlockFertilizeEvent");
+            createEventListener(GameEventType.BLOCK_FERTILIZE_EVENT, org.bukkit.event.block.BlockFertilizeEvent.class, new BlockFertilizeEventFunction());
+        } catch (ClassNotFoundException ignored) {
+        }
+
+        try {
             Class entityBreakByEntityEventClass = Class.forName("io.papermc.paper.event.entity.EntityBreakByEntityEvent");
             createEventListener(GameEventType.HANGING_BREAK_EVENT, entityBreakByEntityEventClass, new EntityBreakByEntityEventFunction());
         } catch (ClassNotFoundException ignored) {
@@ -932,6 +938,17 @@ public class BukkitEventsListener implements Listener {
             spongeAbsorbEvent.block = e.getBlock();
             spongeAbsorbEvent.blocks = e.getBlocks();
             return eventType.createEvent(spongeAbsorbEvent);
+        }
+    }
+
+    private static class BlockFertilizeEventFunction implements GameEventCreator<GameEventArgs.BlockFertilizeEvent, org.bukkit.event.block.BlockFertilizeEvent> {
+
+        @Override
+        public GameEvent<GameEventArgs.BlockFertilizeEvent> execute(GameEventType<GameEventArgs.BlockFertilizeEvent> eventType, GameEventPriority priority, org.bukkit.event.block.BlockFertilizeEvent e) {
+            GameEventArgs.BlockFertilizeEvent blockFertilizeEvent = new GameEventArgs.BlockFertilizeEvent();
+            blockFertilizeEvent.block = e.getBlock();
+            blockFertilizeEvent.blocks = e.getBlocks();
+            return eventType.createEvent(blockFertilizeEvent);
         }
     }
 
