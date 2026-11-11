@@ -6,6 +6,7 @@ import com.bgsoftware.superiorskyblock.api.key.Key;
 import com.bgsoftware.superiorskyblock.api.key.KeyMap;
 import com.bgsoftware.superiorskyblock.api.service.world.WorldRecordFlags;
 import com.bgsoftware.superiorskyblock.api.service.world.WorldRecordService;
+import com.bgsoftware.common.reflection.ReflectMethod;
 import com.bgsoftware.superiorskyblock.core.EnumHelper;
 import com.bgsoftware.superiorskyblock.core.LazyReference;
 import com.bgsoftware.superiorskyblock.core.Materials;
@@ -26,9 +27,14 @@ import com.bgsoftware.superiorskyblock.platform.event.args.GameEventArgs;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
+import org.bukkit.block.data.Bisected;
+import org.bukkit.block.data.type.Bed;
+import org.bukkit.block.data.type.Stairs;
+import org.bukkit.block.data.type.TrapDoor;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.FallingBlock;
@@ -64,6 +70,26 @@ public class BlockChangesListener extends AbstractGameEventListener {
 
     private static final BlockFace[] COPPER_GOLEM_FACES = {
             BlockFace.DOWN, BlockFace.UP, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST};
+
+    private static final ReflectMethod<Object> GET_BLOCK_DATA = new ReflectMethod<>(Block.class, "getBlockData");
+
+    private static final BlockFace[] HORIZONTAL_FACES = {
+            BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST};
+
+    @Nullable
+    private static final Material MELON_STEM = EnumHelper.getEnum(Material.class, "MELON_STEM");
+    @Nullable
+    private static final Material PUMPKIN_STEM = EnumHelper.getEnum(Material.class, "PUMPKIN_STEM");
+    @Nullable
+    private static final Material ATTACHED_MELON_STEM = EnumHelper.getEnum(Material.class, "ATTACHED_MELON_STEM");
+    @Nullable
+    private static final Material ATTACHED_PUMPKIN_STEM = EnumHelper.getEnum(Material.class, "ATTACHED_PUMPKIN_STEM");
+    @Nullable
+    private static final Material FARMLAND = EnumHelper.getEnum(Material.class, "FARMLAND");
+    @Nullable
+    private static final Material SUSPICIOUS_SAND = EnumHelper.getEnum(Material.class, "SUSPICIOUS_SAND");
+    @Nullable
+    private static final Material SUSPICIOUS_GRAVEL = EnumHelper.getEnum(Material.class, "SUSPICIOUS_GRAVEL");
 
     @WorldRecordFlags
     private static final int REGULAR_RECORD_FLAGS = WorldRecordFlags.SAVE_BLOCK_COUNT | WorldRecordFlags.DIRTY_CHUNKS;
@@ -110,6 +136,46 @@ public class BlockChangesListener extends AbstractGameEventListener {
                     shouldAvoidReplacedState ? null : replacedState,
                     REGULAR_RECORD_FLAGS);
         }
+
+        trackSecondHalf(block);
+    }
+
+    private void trackSecondHalf(Block block) {
+        if (!GET_BLOCK_DATA.isValid())
+            return;
+
+        // Doors, beds and tall plants place their second half after the place event, without any event
+        // of their own. Island calculations count both halves, so the second one must be recorded too.
+        Object blockData = GET_BLOCK_DATA.invoke(block);
+        Block secondHalf;
+
+        if (blockData instanceof Bed) {
+            Bed bed = (Bed) blockData;
+            if (bed.getPart() != Bed.Part.FOOT)
+                return;
+            secondHalf = block.getRelative(bed.getFacing());
+        } else if (blockData instanceof Bisected && !(blockData instanceof Stairs) && !(blockData instanceof TrapDoor)) {
+            if (((Bisected) blockData).getHalf() != Bisected.Half.BOTTOM)
+                return;
+            secondHalf = block.getRelative(BlockFace.UP);
+        } else {
+            return;
+        }
+
+        Material type = block.getType();
+        World world = secondHalf.getWorld();
+        int chunkX = secondHalf.getX() >> 4;
+        int chunkZ = secondHalf.getZ() >> 4;
+
+        BukkitExecutor.sync(() -> {
+            if (!world.isChunkLoaded(chunkX, chunkZ) || secondHalf.getType() != type)
+                return;
+
+            try (ObjectsPools.Wrapper<Location> wrapper = ObjectsPools.LOCATION.obtain()) {
+                this.worldRecordService.get().recordBlockPlace(Keys.of(secondHalf),
+                        secondHalf.getLocation(wrapper.getHandle()), 1, null, REGULAR_RECORD_FLAGS);
+            }
+        }, 1L);
     }
 
     private void onBucketEmpty(GameEvent<GameEventArgs.PlayerEmptyBucketEvent> e) {
@@ -164,6 +230,49 @@ public class BlockChangesListener extends AbstractGameEventListener {
                     block.getLocation(wrapper.getHandle()),
                     1, block.getState(), REGULAR_RECORD_FLAGS);
         }
+
+        Material newType = newState.getType();
+        if (newType == Material.MELON || newType == Material.PUMPKIN)
+            trackStemAttachment(block, newType);
+    }
+
+    private void trackStemAttachment(Block fruit, Material fruitType) {
+        // The stem that grew the fruit turns into an attached stem right after this event, without
+        // any event of its own. Record that change, otherwise the stem is counted twice once the fruit
+        // is harvested and the attached stem turns back into a stem.
+        Material stemType = fruitType == Material.MELON ? MELON_STEM : PUMPKIN_STEM;
+        Material attachedType = fruitType == Material.MELON ? ATTACHED_MELON_STEM : ATTACHED_PUMPKIN_STEM;
+        if (stemType == null || attachedType == null)
+            return;
+
+        Map<Block, BlockState> stems = new ArrayMap<>();
+        for (BlockFace face : HORIZONTAL_FACES) {
+            Block nearby = fruit.getRelative(face);
+            if (nearby.getType() == stemType)
+                stems.put(nearby, nearby.getState());
+        }
+
+        if (stems.isEmpty())
+            return;
+
+        World world = fruit.getWorld();
+        int chunkX = fruit.getX() >> 4;
+        int chunkZ = fruit.getZ() >> 4;
+
+        BukkitExecutor.sync(() -> {
+            if (!world.isChunkLoaded(chunkX, chunkZ))
+                return;
+
+            stems.forEach((stem, oldState) -> {
+                if (stem.getType() != attachedType)
+                    return;
+
+                try (ObjectsPools.Wrapper<Location> wrapper = ObjectsPools.LOCATION.obtain()) {
+                    this.worldRecordService.get().recordBlockPlace(Keys.of(stem),
+                            stem.getLocation(wrapper.getHandle()), 1, oldState, REGULAR_RECORD_FLAGS);
+                }
+            });
+        }, 1L);
     }
 
     private void onBlockForm(GameEvent<GameEventArgs.BlockFormEvent> e) {
@@ -301,10 +410,12 @@ public class BlockChangesListener extends AbstractGameEventListener {
     }
 
     private void onEntityChangeBlock(GameEvent<GameEventArgs.EntityChangeBlockEvent> e) {
-        if (e.getArgs().entity instanceof Player)
-            return;
-
         Block block = e.getArgs().block;
+
+        // Most block changes made by players also fire a place event, which is already recorded.
+        // Trampling farmland, brushing suspicious blocks and eating cakes only fire this event.
+        if (e.getArgs().entity instanceof Player && !isPlayerOnlyBlockChange(block.getType()))
+            return;
 
         // We do not care about spawn island, and therefore only island worlds are relevant.
         if (!plugin.getGrid().isIslandsWorld(block.getWorld()))
@@ -645,6 +756,12 @@ public class BlockChangesListener extends AbstractGameEventListener {
 
         if (CLOSED_EYEBLOSSOM != null || OPEN_EYEBLOSSOM != null)
             registerCallback(GameEventType.GENERIC_GAME_EVENT, GameEventPriority.MONITOR, this::onGenericGame);
+    }
+
+    private static boolean isPlayerOnlyBlockChange(Material type) {
+        if (type == FARMLAND || type == SUSPICIOUS_SAND || type == SUSPICIOUS_GRAVEL || type == Material.CAKE)
+            return true;
+        return type.name().endsWith("CANDLE_CAKE");
     }
 
     @Nullable
