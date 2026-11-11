@@ -33,6 +33,9 @@ public class CompletableFutureList<E> extends ArrayList<CompletableFuture<E>> {
             allTasks.get(timeout, TimeUnit.SECONDS);
         } catch (Throwable error) {
             Log.error(error, "An unexpected error occurred while waiting for tasks to complete:");
+            // The results that did not arrive in time are missing: going on would hand an incomplete result
+            // to the caller (an island calculation would save empty block counts).
+            onFailure.accept(error);
         }
     }
 
