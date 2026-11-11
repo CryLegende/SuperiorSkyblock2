@@ -937,8 +937,9 @@ public class BukkitEventsListener implements Listener {
 
     private static class EntityBreakByEntityEventFunction implements GameEventCreator<GameEventArgs.HangingBreakEvent, Event> {
 
+        // getCause() is declared on EntityBreakEvent, the parent class, which ReflectMethod does not search.
         private static final ReflectMethod<Enum<?>> GET_CAUSE_METHOD = new ReflectMethod<>(
-                new ClassInfo("io.papermc.paper.event.entity.EntityBreakByEntityEvent", ClassInfo.PackageType.UNKNOWN),
+                new ClassInfo("io.papermc.paper.event.entity.EntityBreakEvent", ClassInfo.PackageType.UNKNOWN),
                 "getCause", new ClassInfo[0]);
         private static final ReflectMethod<Entity> GET_REMOVER_METHOD = new ReflectMethod<>(
                 new ClassInfo("io.papermc.paper.event.entity.EntityBreakByEntityEvent", ClassInfo.PackageType.UNKNOWN),
