@@ -27,8 +27,15 @@ public class PlayersManagerImpl extends Manager implements PlayersManager {
 
     private PlayersContainer playersContainer;
 
+    // Guards creating a record and renaming one (which briefly takes it out of the container).
+    private final Object playersLock = new Object();
+
     public PlayersManagerImpl(SuperiorSkyblockPlugin plugin) {
         super(plugin);
+    }
+
+    public Object getPlayersLock() {
+        return this.playersLock;
     }
 
     @Override
@@ -66,10 +73,17 @@ public class PlayersManagerImpl extends Manager implements PlayersManager {
         SuperiorPlayer superiorPlayer = this.playersContainer.getSuperiorPlayer(uuid);
 
         if (createIfNotExists && superiorPlayer == null) {
-            superiorPlayer = plugin.getFactory().createPlayer(uuid);
-            this.playersContainer.addPlayer(superiorPlayer);
-            if (saveToDatabase)
-                PlayersDatabaseBridge.insertPlayer(superiorPlayer);
+            // Placeholders and other plugins resolve players off the main thread while the player joins:
+            // checking and creating under one lock keeps a single record per uuid.
+            synchronized (this.playersLock) {
+                superiorPlayer = this.playersContainer.getSuperiorPlayer(uuid);
+                if (superiorPlayer == null) {
+                    superiorPlayer = plugin.getFactory().createPlayer(uuid);
+                    this.playersContainer.addPlayer(superiorPlayer);
+                    if (saveToDatabase)
+                        PlayersDatabaseBridge.insertPlayer(superiorPlayer);
+                }
+            }
         }
 
         return superiorPlayer;

@@ -254,12 +254,16 @@ public class SSuperiorPlayer implements SuperiorPlayer {
         if (Objects.equals(this.name, name))
             return;
 
-        try {
-            plugin.getPlayers().getPlayersContainer().removePlayer(this);
-            this.name = name;
-            PlayersDatabaseBridge.savePlayerName(this);
-        } finally {
-            plugin.getPlayers().getPlayersContainer().addPlayer(this);
+        // While this record is out of the container, a lookup by uuid from another thread would create a
+        // second record of the same player: hold the lock that creations wait on.
+        synchronized (plugin.getPlayers().getPlayersLock()) {
+            try {
+                plugin.getPlayers().getPlayersContainer().removePlayer(this);
+                this.name = name;
+                PlayersDatabaseBridge.savePlayerName(this);
+            } finally {
+                plugin.getPlayers().getPlayersContainer().addPlayer(this);
+            }
         }
     }
 
