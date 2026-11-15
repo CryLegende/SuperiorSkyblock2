@@ -45,9 +45,11 @@ import org.bukkit.World;
 import ${CRAFTBUKKIT_PACKAGE}.CraftChunk;
 import ${CRAFTBUKKIT_PACKAGE}.CraftWorld;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -55,8 +57,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public abstract class AbstractNMSChunks implements NMSChunks {
+
+    private static final long SHUTDOWN_CHUNK_TASKS_TIMEOUT_SECONDS = 10;
 
     protected final SuperiorSkyblockPlugin plugin;
 
@@ -190,14 +197,33 @@ public abstract class AbstractNMSChunks implements NMSChunks {
 
     @Override
     public void shutdown() {
-        List<CompletableFuture<Void>> pendingTasks = NMSUtils.getPendingChunkActions();
+        List<CompletableFuture<Void>> pendingTasks;
+        try {
+            pendingTasks = new ArrayList<>(NMSUtils.getPendingChunkActions());
+        } catch (ConcurrentModificationException error) {
+            // The list is filled by other threads: tasks that vanish while it is copied are finished anyway
+            pendingTasks = new ArrayList<>(NMSUtils.getPendingChunkActions());
+        }
 
         if (pendingTasks.isEmpty())
             return;
 
         Log.info("Waiting for chunk tasks to complete.");
 
-        CompletableFuture.allOf(pendingTasks.toArray(new CompletableFuture[0])).join();
+        // A chunk task that never completes (an island deletion in flight when the server stops) used to block
+        // the shutdown forever: the wait is bounded, what is left is only chunk data of an island being deleted
+        try {
+            CompletableFuture.allOf(pendingTasks.toArray(new CompletableFuture[0]))
+                    .get(SHUTDOWN_CHUNK_TASKS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException error) {
+            Log.warn("Chunk tasks did not complete within ", SHUTDOWN_CHUNK_TASKS_TIMEOUT_SECONDS,
+                    " seconds, continuing the shutdown (", pendingTasks.stream().filter(task -> !task.isDone()).count(),
+                    " of ", pendingTasks.size(), " still pending).");
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException error) {
+            Log.error(error.getCause() == null ? error : error.getCause(), "A chunk task failed while shutting down:");
+        }
     }
 
     @Override
