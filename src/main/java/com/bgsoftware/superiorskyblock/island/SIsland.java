@@ -712,6 +712,10 @@ public class SIsland implements Island {
         plugin.getMenus().refreshIslandBannedPlayers(this);
 
         superiorPlayer.runIfOnline(player -> {
+            // Same exemption as when entering an island: admins in bypass mode are not expelled.
+            if (superiorPlayer.hasBypassModeEnabled() || superiorPlayer.hasPermissionWithoutOP("superior.admin.ban.bypass"))
+                return;
+
             try (ObjectsPools.Wrapper<Location> wrapper = ObjectsPools.LOCATION.obtain()) {
                 if (isInside(player.getLocation(wrapper.getHandle())))
                     superiorPlayer.teleport(plugin.getGrid().getSpawnIsland());
