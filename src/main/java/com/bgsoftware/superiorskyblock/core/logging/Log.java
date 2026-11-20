@@ -23,7 +23,9 @@ public class Log {
     private static Logger initializeLogger() {
         Logger logger = Logger.getLogger("SuperiorSkyblock2");
 
-        logger.setParent(plugin.getLogger());
+        // On Paper, Logger.getLogger("SuperiorSkyblock2") is already the plugin logger, which refuses a new parent.
+        if (logger != plugin.getLogger())
+            logger.setParent(plugin.getLogger());
         logger.setUseParentHandlers(true);
 
         File logsFolder = new File(plugin.getDataFolder(), "logs");

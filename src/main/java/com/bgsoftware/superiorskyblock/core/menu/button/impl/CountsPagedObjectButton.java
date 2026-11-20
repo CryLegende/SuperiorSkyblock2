@@ -54,6 +54,7 @@ public class CountsPagedObjectButton extends AbstractPagedMenuButton<MenuCounts.
             .put("BREWING_STAND", "BREWING_STAND_ITEM")
             .put("BROWN_CANDLE_CAKE", "BROWN_CANDLE")
             .put("BROWN_WALL_BANNER", "BROWN_BANNER")
+            .put("BUBBLE_COLUMN", "WATER_BUCKET")
             .put("BUBBLE_CORAL_WALL_FAN", "BUBBLE_CORAL")
             .put("BURNING_FURNACE", "FURNACE")
             .put("CAKE_BLOCK", "CAKE")
@@ -259,7 +260,12 @@ public class CountsPagedObjectButton extends AbstractPagedMenuButton<MenuCounts.
                 itemBuilder = new ItemBuilder(ItemSkulls.getPlayerHead(Materials.PLAYER_HEAD.toBukkitItem(), texture));
                 materialName = blockKey.getSubKey() + "_SPAWNER";
             } else {
-                itemBuilder = new ItemBuilder(blockMaterial, damage);
+                try {
+                    itemBuilder = new ItemBuilder(blockMaterial, damage);
+                } catch (IllegalArgumentException error) {
+                    // A counted block without an item form (and no entry above) would break the whole menu.
+                    itemBuilder = new ItemBuilder(Material.BARRIER, (short) 0);
+                }
                 if (blockMaterial == Materials.SPAWNER.toBukkitType())
                     materialName = blockKey.getSubKey() + "_SPAWNER";
                 else
