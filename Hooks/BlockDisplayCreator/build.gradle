@@ -1,0 +1,25 @@
+group 'Hooks:BlockDisplayCreator'
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
+
+repositories {
+    mavenLocal()
+    maven { url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
+}
+
+dependencies {
+    // Built from the BlockDisplayCreator fork with "mvn install" (not published on a repository)
+    compileOnly "me.Genral_Breddok:BlockDisplayCreator:1.5.4.4"
+    compileOnly "org.spigotmc:spigot-api:1.21.1-R0.1-SNAPSHOT"
+    compileOnly project(":API")
+    compileOnly project(":")
+}
+
+if (project.hasProperty('hook.compile_blockdisplaycreator') &&
+        !Boolean.valueOf(project.findProperty("hook.compile_blockdisplaycreator").toString())) {
+    project.tasks.all { task -> task.enabled = false }
+}
